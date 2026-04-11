@@ -1,0 +1,161 @@
+# experiments/make_plots_and_stats.py
+import os
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+
+from plot_style import ALGO_COLORS, METRIC_LABELS, apply_publication_style, finish_and_save, style_axis
+
+# Optional: statistical test (Welch's t-test). If scipy not installed, we skip p-values.
+try:
+    from scipy.stats import ttest_ind
+    HAS_SCIPY = True
+except Exception:
+    HAS_SCIPY = False
+
+
+IN_PATH = os.path.join("outputs", "compare_eval_summary.csv")
+OUT_DIR = "outputs"
+os.makedirs(OUT_DIR, exist_ok=True)
+
+METRICS = ["mean_wait", "total_wait", "mean_speed", "total_stopped", "stopped_ratio", "arrived_last"]
+
+
+def ci95(mean, std, n):
+    # normal approx; good enough for n>=15 (you have ~19/20 episodes)
+    if n <= 1 or np.isnan(std):
+        return (np.nan, np.nan)
+    half = 1.96 * (std / np.sqrt(n))
+    return (mean - half, mean + half)
+
+
+def load_data(path):
+    df = pd.read_csv(path)
+    # keep only PPO test_final (your script sets split column); QL is "train_or_run"
+    # If your file doesn't have split, it still works (we'll not filter).
+    if "split" in df.columns:
+        df = df[df["split"].isin(["test_final", "train_or_run"])]
+    return df
+
+
+def summarize(df):
+    rows = []
+    for algo in sorted(df["algo"].unique()):
+        d = df[df["algo"] == algo].copy()
+        for m in METRICS:
+            if m not in d.columns:
+                continue
+            x = pd.to_numeric(d[m], errors="coerce").dropna()
+            n = int(x.shape[0])
+            if n == 0:
+                continue
+            mu = float(x.mean())
+            sd = float(x.std(ddof=1)) if n > 1 else 0.0
+            lo, hi = ci95(mu, sd, n)
+            rows.append({
+                "algo": algo,
+                "metric": m,
+                "n": n,
+                "mean": mu,
+                "std": sd,
+                "ci95_low": lo,
+                "ci95_high": hi
+            })
+    return pd.DataFrame(rows)
+
+
+def welch_tests(df):
+    if not HAS_SCIPY:
+        return pd.DataFrame([{
+            "note": "scipy not installed -> p-values skipped. Install with: pip install scipy"
+        }])
+
+    # Compare QL vs PPO for each metric using Welch's t-test (unequal variances)
+    out = []
+    if not set(["QL", "PPO"]).issubset(set(df["algo"].unique())):
+        return pd.DataFrame([{"note": "Need both QL and PPO in data to compute tests."}])
+
+    for m in METRICS:
+        if m not in df.columns:
+            continue
+        x1 = pd.to_numeric(df[df["algo"] == "QL"][m], errors="coerce").dropna().values
+        x2 = pd.to_numeric(df[df["algo"] == "PPO"][m], errors="coerce").dropna().values
+        if len(x1) < 2 or len(x2) < 2:
+            continue
+        stat, p = ttest_ind(x1, x2, equal_var=False)
+        out.append({
+            "metric": m,
+            "welch_t_stat": float(stat),
+            "p_value": float(p),
+            "ql_n": int(len(x1)),
+            "ppo_n": int(len(x2)),
+        })
+    return pd.DataFrame(out)
+
+
+def plot_metric_vs_episode(df, metric, out_path):
+    # Build per-episode series
+    sub = df[["algo", "ep", metric]].copy()
+    sub[metric] = pd.to_numeric(sub[metric], errors="coerce")
+    sub = sub.dropna()
+
+    # Sort for nicer lines
+    sub = sub.sort_values(["algo", "ep"])
+
+    apply_publication_style()
+    fig, ax = plt.subplots()
+    for algo in sorted(sub["algo"].unique()):
+        d = sub[sub["algo"] == algo]
+        ax.plot(
+            d["ep"],
+            d[metric],
+            marker="o",
+            markersize=4.5,
+            linewidth=2.2,
+            color=ALGO_COLORS.get(algo, None),
+            label=algo,
+        )
+
+    ylabel = METRIC_LABELS.get(metric, metric)
+    style_axis(ax, title=f"{ylabel}: PPO vs QL", ylabel=ylabel)
+    ax.legend(title="Algorithm")
+    finish_and_save(fig, out_path)
+
+
+def main():
+    if not os.path.exists(IN_PATH):
+        raise FileNotFoundError(f"Cannot find {IN_PATH}. Run your comparison script first.")
+
+    df = load_data(IN_PATH)
+
+    # If you only want PPO test_final and QL (train_or_run), keep them:
+    if "split" in df.columns:
+        # PPO: use only test_final; QL: use train_or_run (or keep both if you later add ql_test_final)
+        df_ql = df[df["algo"] == "QL"]
+        df_ppo = df[(df["algo"] == "PPO") & (df["split"] == "test_final")]
+        df = pd.concat([df_ql, df_ppo], ignore_index=True)
+
+    # Save stats
+    stats = summarize(df)
+    stats_path = os.path.join(OUT_DIR, "eval_stats_summary.csv")
+    stats.to_csv(stats_path, index=False)
+
+    tests = welch_tests(df)
+    tests_path = os.path.join(OUT_DIR, "eval_welch_tests.csv")
+    tests.to_csv(tests_path, index=False)
+
+    # Plots
+    plot_metric_vs_episode(df, "mean_wait", os.path.join(OUT_DIR, "fig_mean_wait_vs_ep.png"))
+    plot_metric_vs_episode(df, "stopped_ratio", os.path.join(OUT_DIR, "fig_stopped_ratio_vs_ep.png"))
+
+    print("Saved:")
+    print(" -", stats_path)
+    print(" -", tests_path)
+    print(" -", os.path.join(OUT_DIR, "fig_mean_wait_vs_ep.png"))
+    print(" -", os.path.join(OUT_DIR, "fig_stopped_ratio_vs_ep.png"))
+    if not HAS_SCIPY:
+        print("Note: scipy not installed, so p-values were skipped.")
+
+
+if __name__ == "__main__":
+    main()

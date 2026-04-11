@@ -1,0 +1,124 @@
+import os
+import sys
+
+import pandas as pd
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(SCRIPT_DIR)
+
+# if "SUMO_HOME" in os.environ:
+#     tools = os.path.join(os.environ["SUMO_HOME"], "tools")
+#     sys.path.append(tools)
+# else:
+#     sys.exit("Please declare the environment variable 'SUMO_HOME'")
+
+from common_4x4 import NET_FILE, ROUTE_FILE, COMMON_ENV_KWARGS
+from sumo_rl import SumoEnvironment
+from sumo_rl.agents import QLAgent
+from sumo_rl.exploration import EpsilonGreedy
+
+
+if __name__ == "__main__":
+    alpha = 0.1
+    gamma = 0.99
+    decay = 0.98
+    runs = 1
+    episodes = 20
+
+    env = SumoEnvironment(
+        net_file=NET_FILE,
+        route_file=ROUTE_FILE,
+        **COMMON_ENV_KWARGS,
+    )
+
+    for run in range(1, runs + 1):
+        # Reset the environment and get the initial states
+        initial_states = env.reset()
+
+        # Create one Q-learning agent for each traffic signal
+        ql_agents = {
+            ts: QLAgent(
+                starting_state=env.encode(initial_states[ts], ts),
+                state_space=env.observation_space,
+                action_space=env.action_space,
+                alpha=alpha,
+                gamma=gamma,
+                exploration_strategy=EpsilonGreedy(
+                    initial_epsilon=0.05,
+                    min_epsilon=0.005,
+                    decay=decay
+                ),
+            )
+            for ts in env.ts_ids
+        }
+
+        for episode in range(1, episodes + 1):
+            # List used to store custom step-level metrics for this episode
+            custom_metrics = []
+
+            # Reset the environment at the beginning of each episode,
+            # except for episode 1 which already started from the initial reset
+            if episode != 1:
+                initial_states = env.reset()
+                for ts in initial_states.keys():
+                    ql_agents[ts].state = env.encode(initial_states[ts], ts)
+
+            infos = []
+
+            done = {"__all__": False}
+            step_counter = 0  # Track the current simulation step
+
+            while not done["__all__"]:
+                # Let each agent choose an action
+                actions = {ts: ql_agents[ts].act() for ts in ql_agents.keys()}
+
+                # Apply the actions to the environment
+                s, r, done, info = env.step(action=actions)
+
+                # Collect custom traffic metrics at the current step
+                current_step_data = {"step": step_counter}
+
+                # Iterate through each traffic signal (agent)
+                for ts_id in env.ts_ids:
+                    # Get the traffic signal object
+                    traffic_signal = env.traffic_signals[ts_id]
+
+                    # Compute the total number of vehicles and halted vehicles
+                    # across all lanes controlled by this traffic signal
+                    total_vehicles = 0
+                    stopped_vehicles = 0
+                    for lane in traffic_signal.lanes:
+                        total_vehicles += traffic_signal.sumo.lane.getLastStepVehicleNumber(lane)
+                        stopped_vehicles += traffic_signal.sumo.lane.getLastStepHaltingNumber(lane)
+
+                    # Compute stop ratio and avoid division by zero
+                    stop_ratio = stopped_vehicles / total_vehicles if total_vehicles > 0 else 0.0
+
+                    # Save the metrics into the dictionary
+                    # Example column names:
+                    # '0_total_vehicles', '0_stopped', '0_stop_ratio', '0_reward'
+                    current_step_data[f"{ts_id}_total_vehicles"] = total_vehicles
+                    current_step_data[f"{ts_id}_stopped"] = stopped_vehicles
+                    current_step_data[f"{ts_id}_stop_ratio"] = stop_ratio
+                    current_step_data[f"{ts_id}_reward"] = r[ts_id]
+
+                # Append the current step data to the episode list
+                custom_metrics.append(current_step_data)
+                step_counter += 1
+
+                # Update each agent using the observed reward and next state
+                for agent_id in s.keys():
+                    ql_agents[agent_id].learn(
+                        next_state=env.encode(s[agent_id], agent_id),
+                        reward=r[agent_id]
+                    )
+
+            # Save the default SUMO-RL output CSV for this episode
+            env.save_csv(f"outputs/4x4/ql-4x4grid_run{run}", episode)
+
+            # Save the custom collected metrics to a separate CSV file
+            df_custom = pd.DataFrame(custom_metrics)
+            df_custom.to_csv(f"outputs/4x4/custom_metrics_run{run}_ep{episode}.csv", index=False)
+            print(f"Custom data saved: outputs/4x4/custom_metrics_run{run}_ep{episode}.csv")
+
+    env.close()
