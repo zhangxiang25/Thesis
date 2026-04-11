@@ -1,5 +1,5 @@
-# experiments/evaluate_ppo_warmup.py
-# Warmup episode will be SAVED, then run official ep1..epN.
+# Evaluate a trained PPO policy on the shared 4x4 grid setup.
+# A saved warmup episode is produced first, followed by official evaluation episodes.
 
 import argparse
 import glob

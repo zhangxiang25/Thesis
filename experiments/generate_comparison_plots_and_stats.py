@@ -1,4 +1,4 @@
-# experiments/make_plots_and_stats.py
+# Generate thesis-ready comparison plots and summary statistics.
 import os
 import numpy as np
 import pandas as pd

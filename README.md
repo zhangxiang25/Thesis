@@ -36,11 +36,11 @@ The current setup uses:
 
 - One shared 4x4 traffic network: `sumo_rl/nets/4x4-Lucas/`
 - One shared reward function for both algorithms: `experiments/common_4x4.py`
-- Q-Learning training script: `experiments/ql_4x4grid-mo.py`
-- PPO training script: `experiments/ppo_4x4grid.py`
-- PPO evaluation script: `experiments/evaluate_ppo.py`
-- Comparison script: `experiments/conparison.py`
-- Plotting and statistics script: `experiments/make_plots_and_stats.py`
+- Q-Learning training script: `experiments/train_ql_4x4grid.py`
+- PPO training script: `experiments/train_ppo_4x4grid.py`
+- PPO evaluation script: `experiments/evaluate_ppo_4x4grid.py`
+- Comparison script: `experiments/compare_ql_ppo.py`
+- Plotting and statistics script: `experiments/generate_comparison_plots_and_stats.py`
 
 ## Reward Function
 
@@ -68,13 +68,13 @@ Main folders:
 
 Most important files:
 
-- `experiments/ql_4x4grid-mo.py`
-- `experiments/ppo_4x4grid.py`
-- `experiments/evaluate_ppo.py`
-- `experiments/conparison.py`
-- `experiments/make_plots_and_stats.py`
-- `experiments/plot_learning_curve.py`
-- `experiments/plot_ql_metrics.py`
+- `experiments/train_ql_4x4grid.py`
+- `experiments/train_ppo_4x4grid.py`
+- `experiments/evaluate_ppo_4x4grid.py`
+- `experiments/compare_ql_ppo.py`
+- `experiments/generate_comparison_plots_and_stats.py`
+- `experiments/plot_ql_learning_curve.py`
+- `experiments/plot_ql_episode_metrics.py`
 
 ## Environment Setup
 
@@ -103,7 +103,7 @@ You do not need to activate the environment if you call the interpreter directly
 ### 1. Run Q-Learning
 
 ```powershell
-.\.venv\Scripts\python.exe .\experiments\ql_4x4grid-mo.py
+.\.venv\Scripts\python.exe .\experiments\train_ql_4x4grid.py
 ```
 
 This generates:
@@ -114,7 +114,7 @@ This generates:
 ### 2. Run PPO Training
 
 ```powershell
-.\.venv\Scripts\python.exe .\experiments\ppo_4x4grid.py
+.\.venv\Scripts\python.exe .\experiments\train_ppo_4x4grid.py
 ```
 
 This generates PPO training artifacts and checkpoints in:
@@ -124,7 +124,7 @@ This generates PPO training artifacts and checkpoints in:
 ### 3. Evaluate PPO
 
 ```powershell
-.\.venv\Scripts\python.exe .\experiments\evaluate_ppo.py --ray_results .\ray_results --clean
+.\.venv\Scripts\python.exe .\experiments\evaluate_ppo_4x4grid.py --ray_results .\ray_results --clean
 ```
 
 This generates PPO evaluation CSVs in:
@@ -134,8 +134,8 @@ This generates PPO evaluation CSVs in:
 ### 4. Build QL vs PPO Comparison
 
 ```powershell
-.\.venv\Scripts\python.exe .\experiments\conparison.py
-.\.venv\Scripts\python.exe .\experiments\make_plots_and_stats.py
+.\.venv\Scripts\python.exe .\experiments\compare_ql_ppo.py
+.\.venv\Scripts\python.exe .\experiments\generate_comparison_plots_and_stats.py
 ```
 
 This generates:
@@ -151,7 +151,7 @@ This generates:
 ### QL Learning Curve
 
 ```powershell
-.\.venv\Scripts\python.exe .\experiments\plot_learning_curve.py
+.\.venv\Scripts\python.exe .\experiments\plot_ql_learning_curve.py
 ```
 
 Output:
@@ -161,7 +161,7 @@ Output:
 ### QL Metric Plots
 
 ```powershell
-.\.venv\Scripts\python.exe .\experiments\plot_ql_metrics.py
+.\.venv\Scripts\python.exe .\experiments\plot_ql_episode_metrics.py
 ```
 
 Outputs:
@@ -192,9 +192,17 @@ The current comparison results show PPO outperforming Q-Learning on the main tra
 ## Current Notes
 
 - PPO evaluation episode 1 contains only an initialization row and is skipped by the comparison pipeline as an incomplete episode.
-- `experiments/conparison.py` has been adjusted to automatically detect the available PPO `conn*` evaluation files.
+- `experiments/compare_ql_ppo.py` automatically detects the available PPO `conn*` evaluation files.
 - The plotting scripts use a more consistent visual style suitable for thesis figures.
 
-## Base Project
+## Upstream Acknowledgement
 
-This thesis workspace is derived from the `sumo-rl` project by Lucas Alegre. The repository has been simplified and reorganized for one focused experiment pipeline rather than preserving the full upstream examples and documentation.
+This thesis repository is built on top of the `sumo-rl` project by Lucas Alegre. The original project provides the underlying traffic signal control environment and SUMO-based reinforcement learning framework used in this work.
+
+This repository reorganizes that base into a smaller, thesis-specific workspace focused on one reproducible 4x4 experiment pipeline, including:
+
+- Q-Learning training
+- PPO training and evaluation
+- result comparison, statistics, and figure generation
+
+The thesis-specific scripts, experiment setup, cleaned repository structure, generated results, and presentation workflow in this repository reflect the work carried out for this thesis, while the upstream project remains the technical foundation.
