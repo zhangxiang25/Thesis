@@ -131,10 +131,14 @@ if __name__ == "__main__":
     # PPO evaluation/test files (recommended for thesis main comparison)
     ppo_eval_files = latest_matching_files("outputs/4x4grid/ppo_test_final_conn*_ep*.csv")
 
+    # Fixed-time baseline files on the same shared 4x4 setup
+    fixed_time_files = latest_matching_files("outputs/4x4grid/fixedtime_conn*_ep*.csv")
+
     ql_sum = load_files(ql_files, "QL", "train_or_run")
 
     ppo_train_sum = load_files(ppo_train_files, "PPO", "train_csv")
     ppo_eval_sum = load_files(ppo_eval_files, "PPO", "test_final")
+    fixed_time_sum = load_files(fixed_time_files, "Fixed-Time", "run")
 
     os.makedirs("outputs", exist_ok=True)
 
@@ -146,10 +150,13 @@ if __name__ == "__main__":
     print("QL:\n", last_k_mean(ql_sum, 5))
     print("PPO train_csv:\n", last_k_mean(ppo_train_sum, 5))
 
-    # 2) Thesis main: Evaluation comparison using test_final
-    eval_compare = pd.concat([ql_sum, ppo_eval_sum], ignore_index=True)
+    # 2) Thesis main: Evaluation comparison using test_final + optional fixed-time baseline
+    eval_frames = [df for df in [ql_sum, ppo_eval_sum, fixed_time_sum] if not df.empty]
+    eval_compare = pd.concat(eval_frames, ignore_index=True) if eval_frames else pd.DataFrame()
     eval_compare.to_csv("outputs/compare_eval_summary.csv", index=False)
     print("\nSaved -> outputs/compare_eval_summary.csv")
     print("\n=== Last episodes mean (test_final) ===")
     print("QL:\n", last_k_mean(ql_sum, 5))
     print("PPO test_final:\n", last_k_mean(ppo_eval_sum, 5))
+    if not fixed_time_sum.empty:
+        print("Fixed-Time:\n", last_k_mean(fixed_time_sum, 5))

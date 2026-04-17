@@ -10,7 +10,7 @@ if "SUMO_HOME" in os.environ:
 else:
     sys.exit("Please declare the environment variable 'SUMO_HOME'")
 
-from common_4x4 import NET_FILE, ROUTE_FILE, COMMON_ENV_KWARGS
+from common_4x4 import NET_FILE, ROUTE_FILE, build_env_kwargs
 
 import ray
 from ray import tune
@@ -41,8 +41,7 @@ if __name__ == "__main__":
             sumo_rl.parallel_env(
                 net_file=NET_FILE,
                 route_file=ROUTE_FILE,
-                out_csv_name=out_csv_name,
-                **COMMON_ENV_KWARGS,
+                **build_env_kwargs(out_csv_name=out_csv_name),
             )
         )
 

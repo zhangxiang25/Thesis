@@ -7,6 +7,7 @@ DPI = 300
 ALGO_COLORS = {
     "QL": "#1f77b4",
     "PPO": "#d55e00",
+    "Fixed-Time": "#2a9d8f",
 }
 
 NEUTRAL_COLORS = {

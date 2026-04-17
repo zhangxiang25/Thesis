@@ -1,5 +1,7 @@
 # Generate thesis-ready comparison plots and summary statistics.
 import os
+from itertools import combinations
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -31,10 +33,8 @@ def ci95(mean, std, n):
 
 def load_data(path):
     df = pd.read_csv(path)
-    # keep only PPO test_final (your script sets split column); QL is "train_or_run"
-    # If your file doesn't have split, it still works (we'll not filter).
     if "split" in df.columns:
-        df = df[df["split"].isin(["test_final", "train_or_run"])]
+        df = df[df["split"] != "train_csv"]
     return df
 
 
@@ -70,26 +70,29 @@ def welch_tests(df):
             "note": "scipy not installed -> p-values skipped. Install with: pip install scipy"
         }])
 
-    # Compare QL vs PPO for each metric using Welch's t-test (unequal variances)
     out = []
-    if not set(["QL", "PPO"]).issubset(set(df["algo"].unique())):
-        return pd.DataFrame([{"note": "Need both QL and PPO in data to compute tests."}])
+    algos = sorted(df["algo"].unique())
+    if len(algos) < 2:
+        return pd.DataFrame([{"note": "Need at least two algorithms in data to compute tests."}])
 
-    for m in METRICS:
-        if m not in df.columns:
-            continue
-        x1 = pd.to_numeric(df[df["algo"] == "QL"][m], errors="coerce").dropna().values
-        x2 = pd.to_numeric(df[df["algo"] == "PPO"][m], errors="coerce").dropna().values
-        if len(x1) < 2 or len(x2) < 2:
-            continue
-        stat, p = ttest_ind(x1, x2, equal_var=False)
-        out.append({
-            "metric": m,
-            "welch_t_stat": float(stat),
-            "p_value": float(p),
-            "ql_n": int(len(x1)),
-            "ppo_n": int(len(x2)),
-        })
+    for algo_a, algo_b in combinations(algos, 2):
+        for m in METRICS:
+            if m not in df.columns:
+                continue
+            x1 = pd.to_numeric(df[df["algo"] == algo_a][m], errors="coerce").dropna().values
+            x2 = pd.to_numeric(df[df["algo"] == algo_b][m], errors="coerce").dropna().values
+            if len(x1) < 2 or len(x2) < 2:
+                continue
+            stat, p = ttest_ind(x1, x2, equal_var=False)
+            out.append({
+                "algo_a": algo_a,
+                "algo_b": algo_b,
+                "metric": m,
+                "welch_t_stat": float(stat),
+                "p_value": float(p),
+                "algo_a_n": int(len(x1)),
+                "algo_b_n": int(len(x2)),
+            })
     return pd.DataFrame(out)
 
 
@@ -117,8 +120,8 @@ def plot_metric_vs_episode(df, metric, out_path):
         )
 
     ylabel = METRIC_LABELS.get(metric, metric)
-    style_axis(ax, title=f"{ylabel}: PPO vs QL", ylabel=ylabel)
-    ax.legend(title="Algorithm")
+    style_axis(ax, title=f"{ylabel}: Algorithm Comparison", ylabel=ylabel)
+    ax.legend(title="Method")
     finish_and_save(fig, out_path)
 
 
@@ -127,13 +130,6 @@ def main():
         raise FileNotFoundError(f"Cannot find {IN_PATH}. Run your comparison script first.")
 
     df = load_data(IN_PATH)
-
-    # If you only want PPO test_final and QL (train_or_run), keep them:
-    if "split" in df.columns:
-        # PPO: use only test_final; QL: use train_or_run (or keep both if you later add ql_test_final)
-        df_ql = df[df["algo"] == "QL"]
-        df_ppo = df[(df["algo"] == "PPO") & (df["split"] == "test_final")]
-        df = pd.concat([df_ql, df_ppo], ignore_index=True)
 
     # Save stats
     stats = summarize(df)

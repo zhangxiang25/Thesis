@@ -6,9 +6,9 @@ import glob
 import os
 import sys
 
-import pandas as pd
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(SCRIPT_DIR)
 
-# SUMO tools
 if "SUMO_HOME" in os.environ:
     tools = os.path.join(os.environ["SUMO_HOME"], "tools")
     sys.path.append(tools)
@@ -21,31 +21,7 @@ from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv
 from ray.tune.registry import register_env
 
 import sumo_rl
-
-
-def custom_combined_reward(traffic_signal):
-    lanes = traffic_signal.lanes
-    total_stopped = 0
-    total_vehicles = 0
-    total_wait = 0
-
-    for lane in lanes:
-        total_stopped += traffic_signal.sumo.lane.getLastStepHaltingNumber(lane)
-        total_vehicles += traffic_signal.sumo.lane.getLastStepVehicleNumber(lane)
-        total_wait += traffic_signal.sumo.lane.getWaitingTime(lane)
-
-    if total_vehicles == 0:
-        return 0.0
-
-    stop_ratio = total_stopped / total_vehicles
-    avg_wait = total_wait / total_vehicles
-
-    MAX_WAIT_THRESHOLD = 50.0
-    normalized_wait = min(avg_wait, MAX_WAIT_THRESHOLD) / MAX_WAIT_THRESHOLD
-
-    w_ratio = 0.9
-    w_wait = 0.1
-    return -1.0 * ((w_ratio * stop_ratio) + (w_wait * normalized_wait))
+from common_4x4 import NET_FILE, ROUTE_FILE, OUTPUT_4X4GRID_DIR, build_env_kwargs
 
 
 def find_latest_checkpoint(ray_results_dir: str) -> str:
@@ -66,9 +42,9 @@ def run_one_episode(env: ParallelPettingZooEnv, algo: Algorithm):
             actions[agent_id] = algo.compute_single_action(
                 observation=ob,
                 policy_id="default_policy",
-                explore=False,  # deterministic eval
+                explore=False,
             )
-        obs, rew, terminated, truncated, info = env.step(actions)
+        obs, _, terminated, truncated, _ = env.step(actions)
         done_all = bool(terminated.get("__all__", False) or truncated.get("__all__", False))
 
 
@@ -76,7 +52,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--checkpoint", type=str, default=None)
     parser.add_argument("--ray_results", type=str, default=None)
-    parser.add_argument("--episodes", type=int, default=20)  # number of OFFICIAL eval episodes
+    parser.add_argument("--episodes", type=int, default=20)
     parser.add_argument("--num_seconds", type=int, default=20000)
     parser.add_argument("--delta_time", type=int, default=5)
     parser.add_argument("--min_green", type=int, default=5)
@@ -89,25 +65,15 @@ def main():
     )
     args = parser.parse_args()
 
-    # Absolute paths
-    ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-    NET = os.path.join(ROOT, "sumo_rl", "nets", "4x4-Lucas", "4x4.net.xml")
-    ROUTE = os.path.join(ROOT, "sumo_rl", "nets", "4x4-Lucas", "4x4c1c2c1c2.rou.xml")
+    os.makedirs(OUTPUT_4X4GRID_DIR, exist_ok=True)
+    warm_prefix = os.path.join(OUTPUT_4X4GRID_DIR, "ppo_warmup")
+    official_prefix = os.path.join(OUTPUT_4X4GRID_DIR, "ppo_test_final")
 
-    OUT_DIR = os.path.join(ROOT, "outputs", "4x4grid")
-    os.makedirs(OUT_DIR, exist_ok=True)
+    if not os.path.exists(NET_FILE):
+        raise FileNotFoundError(f"NET not found: {NET_FILE}")
+    if not os.path.exists(ROUTE_FILE):
+        raise FileNotFoundError(f"ROUTE not found: {ROUTE_FILE}")
 
-    # ✅ Warmup prefix (SAVED)
-    warm_prefix = os.path.join(OUT_DIR, "ppo_warmup")
-    # ✅ Official prefix (ep1..epN)
-    official_prefix = os.path.join(OUT_DIR, "ppo_test_final")
-
-    if not os.path.exists(NET):
-        raise FileNotFoundError(f"NET not found: {NET}")
-    if not os.path.exists(ROUTE):
-        raise FileNotFoundError(f"ROUTE not found: {ROUTE}")
-
-    # Checkpoint
     if args.checkpoint:
         ckpt_path = args.checkpoint
     elif args.ray_results:
@@ -119,60 +85,44 @@ def main():
     if not os.path.isdir(ckpt_path):
         raise FileNotFoundError(f"Checkpoint directory not found: {ckpt_path}")
 
-    # Optional cleanup (now it deletes BOTH warmup and official if you pass --clean)
     if args.clean:
         for pfx in [warm_prefix, official_prefix]:
-            for f in glob.glob(pfx + "_conn*_ep*.csv"):
+            for path in glob.glob(pfx + "_conn*_ep*.csv"):
                 try:
-                    os.remove(f)
-                except Exception:
+                    os.remove(path)
+                except OSError:
                     pass
 
-    print("ROOT =", ROOT)
-    print("NET  =", NET)
-    print("ROUTE=", ROUTE)
+    print("NET  =", NET_FILE)
+    print("ROUTE=", ROUTE_FILE)
     print("WARM =", warm_prefix)
     print("OUT  =", official_prefix)
     print("CKPT =", ckpt_path)
 
     ray.init(ignore_reinit_error=True, include_dashboard=False)
 
-    # Register env name used during training BEFORE restoring algo
     env_name = "4x4grid"
 
-    def env_creator(_cfg):
+    def create_parallel_env(out_csv_name):
         return ParallelPettingZooEnv(
             sumo_rl.parallel_env(
-                net_file=NET,
-                route_file=ROUTE,
-                out_csv_name=official_prefix,  # training env name registration uses official prefix
-                use_gui=args.use_gui,
-                num_seconds=args.num_seconds,
-                reward_fn=custom_combined_reward,
-                enforce_max_green=True,
-                min_green=args.min_green,
-                delta_time=args.delta_time,
+                net_file=NET_FILE,
+                route_file=ROUTE_FILE,
+                **build_env_kwargs(
+                    out_csv_name=out_csv_name,
+                    use_gui=args.use_gui,
+                    num_seconds=args.num_seconds,
+                    min_green=args.min_green,
+                    delta_time=args.delta_time,
+                ),
             )
         )
 
-    register_env(env_name, env_creator)
+    register_env(env_name, lambda _cfg: create_parallel_env(official_prefix))
 
     algo = Algorithm.from_checkpoint(ckpt_path)
 
-    # ---- 1) Warm-up env: SAVED to ppo_warmup_... ----
-    warm_env = ParallelPettingZooEnv(
-        sumo_rl.parallel_env(
-            net_file=NET,
-            route_file=ROUTE,
-            out_csv_name=warm_prefix,
-            use_gui=args.use_gui,
-            num_seconds=args.num_seconds,
-            reward_fn=custom_combined_reward,
-            enforce_max_green=True,
-            min_green=args.min_green,
-            delta_time=args.delta_time,
-        )
-    )
+    warm_env = create_parallel_env(warm_prefix)
     print("[warmup] running 1 warmup episode (will be saved)...")
     run_one_episode(warm_env, algo)
     try:
@@ -181,21 +131,7 @@ def main():
         pass
     print("[warmup] done. Warmup CSV saved with prefix:", warm_prefix)
 
-    # ---- 2) Official evaluation env: SAVED to ppo_test_final_... ----
-    eval_env = ParallelPettingZooEnv(
-        sumo_rl.parallel_env(
-            net_file=NET,
-            route_file=ROUTE,
-            out_csv_name=official_prefix,
-            use_gui=args.use_gui,
-            num_seconds=args.num_seconds,
-            reward_fn=custom_combined_reward,
-            enforce_max_green=True,
-            min_green=args.min_green,
-            delta_time=args.delta_time,
-        )
-    )
-
+    eval_env = create_parallel_env(official_prefix)
     for ep in range(1, args.episodes + 1):
         run_one_episode(eval_env, algo)
         print(f"[eval] finished official episode {ep}/{args.episodes}")
@@ -209,7 +145,7 @@ def main():
     print("Done.")
     print("Warmup pattern :", warm_prefix + "_conn*_ep*.csv")
     print("Official pattern:", official_prefix + "_conn*_ep*.csv")
-    print("Folder:", OUT_DIR)
+    print("Folder:", OUTPUT_4X4GRID_DIR)
 
 
 if __name__ == "__main__":

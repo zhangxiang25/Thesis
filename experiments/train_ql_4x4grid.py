@@ -12,7 +12,7 @@ sys.path.append(SCRIPT_DIR)
 # else:
 #     sys.exit("Please declare the environment variable 'SUMO_HOME'")
 
-from common_4x4 import NET_FILE, ROUTE_FILE, COMMON_ENV_KWARGS
+from common_4x4 import NET_FILE, ROUTE_FILE, OUTPUT_4X4_DIR, build_env_kwargs
 from sumo_rl import SumoEnvironment
 from sumo_rl.agents import QLAgent
 from sumo_rl.exploration import EpsilonGreedy
@@ -28,7 +28,7 @@ if __name__ == "__main__":
     env = SumoEnvironment(
         net_file=NET_FILE,
         route_file=ROUTE_FILE,
-        **COMMON_ENV_KWARGS,
+        **build_env_kwargs(),
     )
 
     for run in range(1, runs + 1):
@@ -114,11 +114,12 @@ if __name__ == "__main__":
                     )
 
             # Save the default SUMO-RL output CSV for this episode
-            env.save_csv(f"outputs/4x4/ql-4x4grid_run{run}", episode)
+            env.save_csv(os.path.join(OUTPUT_4X4_DIR, f"ql-4x4grid_run{run}"), episode)
 
             # Save the custom collected metrics to a separate CSV file
             df_custom = pd.DataFrame(custom_metrics)
-            df_custom.to_csv(f"outputs/4x4/custom_metrics_run{run}_ep{episode}.csv", index=False)
-            print(f"Custom data saved: outputs/4x4/custom_metrics_run{run}_ep{episode}.csv")
+            custom_path = os.path.join(OUTPUT_4X4_DIR, f"custom_metrics_run{run}_ep{episode}.csv")
+            df_custom.to_csv(custom_path, index=False)
+            print(f"Custom data saved: {custom_path}")
 
     env.close()

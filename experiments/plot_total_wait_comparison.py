@@ -62,13 +62,15 @@ def collect_total_wait_series(files, label):
 def main():
     ql_files = sorted(glob.glob(os.path.join("outputs", "4x4", "ql-4x4grid_run1_conn0_ep*.csv")))
     ppo_files = latest_matching_files(os.path.join("outputs", "4x4grid", "ppo_test_final_conn*_ep*.csv"))
+    fixed_time_files = latest_matching_files(os.path.join("outputs", "4x4grid", "fixedtime_conn*_ep*.csv"))
 
     df_ql = collect_total_wait_series(ql_files, "QL")
     df_ppo = collect_total_wait_series(ppo_files, "PPO")
-    df_all = pd.concat([df_ql, df_ppo], ignore_index=True)
+    df_fixed = collect_total_wait_series(fixed_time_files, "Fixed-Time")
+    df_all = pd.concat([df_ql, df_ppo, df_fixed], ignore_index=True)
 
     if df_all.empty:
-        print("No QL or PPO episode CSV files were found.")
+        print("No episode CSV files were found for QL, PPO, or Fixed-Time.")
         return
 
     apply_publication_style()
@@ -87,7 +89,7 @@ def main():
 
     style_axis(
         ax,
-        title="Total Waiting Time: PPO vs QL",
+        title="Total Waiting Time: Algorithm Comparison",
         ylabel="Total Waiting Time (s)",
     )
     ax.legend(title="Algorithm")

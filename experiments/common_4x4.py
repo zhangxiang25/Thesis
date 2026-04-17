@@ -3,6 +3,8 @@ import os
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 NET_FILE = os.path.join(ROOT, "sumo_rl", "nets", "4x4-Lucas", "4x4.net.xml")
 ROUTE_FILE = os.path.join(ROOT, "sumo_rl", "nets", "4x4-Lucas", "4x4c1c2c1c2.rou.xml")
+OUTPUT_4X4_DIR = os.path.join(ROOT, "outputs", "4x4")
+OUTPUT_4X4GRID_DIR = os.path.join(ROOT, "outputs", "4x4grid")
 
 # 4x4 grid environment shared settings for PPO and Q-Learning comparison
 COMMON_ENV_KWARGS = {
@@ -42,3 +44,10 @@ def custom_combined_reward(traffic_signal):
 
 
 COMMON_ENV_KWARGS["reward_fn"] = custom_combined_reward
+
+
+def build_env_kwargs(**overrides):
+    """Build a shared 4x4 environment config for fair method comparisons."""
+    kwargs = dict(COMMON_ENV_KWARGS)
+    kwargs.update(overrides)
+    return kwargs
