@@ -89,8 +89,8 @@ def main():
 
     style_axis(
         ax,
-        title="Total Waiting Time: Algorithm Comparison",
-        ylabel="Total Waiting Time (s)",
+        title="Time-Averaged Total Waiting Time: Algorithm Comparison",
+        ylabel="Time-Averaged Total Waiting Time (s)",
     )
     ax.legend(title="Algorithm")
     finish_and_save(fig, OUTPUT_PATH)
