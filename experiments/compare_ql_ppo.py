@@ -1,6 +1,7 @@
 import glob
 import os
 import re
+import argparse
 import numpy as np
 import pandas as pd
 
@@ -122,17 +123,40 @@ def last_k_mean(df: pd.DataFrame, k=5):
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Aggregate QL, PPO, and fixed-time CSV outputs.")
+    parser.add_argument(
+        "--run-id",
+        type=int,
+        default=None,
+        help="If set, only compare files for the selected run id and write run-specific summaries.",
+    )
+    args = parser.parse_args()
+
+    suffix = f"_run{args.run_id}" if args.run_id is not None else ""
+
+    if args.run_id is None:
+        # Legacy patterns keep thesis-compatible default filenames.
+        ql_pattern = "outputs/4x4/ql-*.csv"
+        ppo_train_pattern = "outputs/4x4grid/ppo_conn*_ep*.csv"
+        ppo_eval_pattern = "outputs/4x4grid/ppo_test_final_conn*_ep*.csv"
+        fixed_time_pattern = "outputs/4x4grid/fixedtime_conn*_ep*.csv"
+    else:
+        ql_pattern = f"outputs/4x4/ql-4x4grid_run{args.run_id}_conn*_ep*.csv"
+        ppo_train_pattern = f"outputs/4x4grid/ppo_run{args.run_id}_conn*_ep*.csv"
+        ppo_eval_pattern = f"outputs/4x4grid/ppo_test_final_run{args.run_id}_conn*_ep*.csv"
+        fixed_time_pattern = f"outputs/4x4grid/fixedtime_run{args.run_id}_conn*_ep*.csv"
+
     # QL files (env.save_csv)
-    ql_files = glob.glob("outputs/4x4/ql-*.csv")
+    ql_files = glob.glob(ql_pattern)
 
     # PPO training env CSV (often noisy/partial under parallel workers)
-    ppo_train_files = latest_matching_files("outputs/4x4grid/ppo_conn*_ep*.csv")
+    ppo_train_files = latest_matching_files(ppo_train_pattern)
 
     # PPO evaluation/test files (recommended for thesis main comparison)
-    ppo_eval_files = latest_matching_files("outputs/4x4grid/ppo_test_final_conn*_ep*.csv")
+    ppo_eval_files = latest_matching_files(ppo_eval_pattern)
 
     # Fixed-time baseline files on the same shared 4x4 setup
-    fixed_time_files = latest_matching_files("outputs/4x4grid/fixedtime_conn*_ep*.csv")
+    fixed_time_files = latest_matching_files(fixed_time_pattern)
 
     ql_sum = load_files(ql_files, "QL", "train_or_run")
 
@@ -144,8 +168,9 @@ if __name__ == "__main__":
 
     # 1) Training-ish comparison (optional)
     train_compare = pd.concat([ql_sum, ppo_train_sum], ignore_index=True)
-    train_compare.to_csv("outputs/compare_train_summary.csv", index=False)
-    print("\nSaved -> outputs/compare_train_summary.csv")
+    train_out = f"outputs/compare_train_summary{suffix}.csv"
+    train_compare.to_csv(train_out, index=False)
+    print(f"\nSaved -> {train_out}")
     print("\n=== Last episodes mean (train_csv) ===")
     print("QL:\n", last_k_mean(ql_sum, 5))
     print("PPO train_csv:\n", last_k_mean(ppo_train_sum, 5))
@@ -153,8 +178,9 @@ if __name__ == "__main__":
     # 2) Thesis main: Evaluation comparison using test_final + optional fixed-time baseline
     eval_frames = [df for df in [ql_sum, ppo_eval_sum, fixed_time_sum] if not df.empty]
     eval_compare = pd.concat(eval_frames, ignore_index=True) if eval_frames else pd.DataFrame()
-    eval_compare.to_csv("outputs/compare_eval_summary.csv", index=False)
-    print("\nSaved -> outputs/compare_eval_summary.csv")
+    eval_out = f"outputs/compare_eval_summary{suffix}.csv"
+    eval_compare.to_csv(eval_out, index=False)
+    print(f"\nSaved -> {eval_out}")
     print("\n=== Last episodes mean (test_final) ===")
     print("QL:\n", last_k_mean(ql_sum, 5))
     print("PPO test_final:\n", last_k_mean(ppo_eval_sum, 5))

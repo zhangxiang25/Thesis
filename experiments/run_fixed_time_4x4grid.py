@@ -26,6 +26,7 @@ def clean_old_outputs(prefix):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run the shared 4x4 SUMO setup with fixed-time control.")
+    parser.add_argument("--run-id", type=int, default=1, help="Logical run id used in output filenames.")
     parser.add_argument("--episodes", type=int, default=20)
     parser.add_argument("--num_seconds", type=int, default=None)
     parser.add_argument("--delta_time", type=int, default=None)
@@ -40,7 +41,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     os.makedirs(OUTPUT_4X4GRID_DIR, exist_ok=True)
-    out_prefix = os.path.join(OUTPUT_4X4GRID_DIR, "fixedtime")
+    out_prefix = os.path.join(OUTPUT_4X4GRID_DIR, f"fixedtime_run{args.run_id}")
 
     if args.clean:
         clean_old_outputs(out_prefix)

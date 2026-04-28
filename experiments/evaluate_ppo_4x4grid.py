@@ -50,6 +50,7 @@ def run_one_episode(env: ParallelPettingZooEnv, algo: Algorithm):
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--run-id", type=int, default=1, help="Logical run id used in output filenames and default checkpoint lookup.")
     parser.add_argument("--checkpoint", type=str, default=None)
     parser.add_argument("--ray_results", type=str, default=None)
     parser.add_argument("--episodes", type=int, default=20)
@@ -66,8 +67,8 @@ def main():
     args = parser.parse_args()
 
     os.makedirs(OUTPUT_4X4GRID_DIR, exist_ok=True)
-    warm_prefix = os.path.join(OUTPUT_4X4GRID_DIR, "ppo_warmup")
-    official_prefix = os.path.join(OUTPUT_4X4GRID_DIR, "ppo_test_final")
+    warm_prefix = os.path.join(OUTPUT_4X4GRID_DIR, f"ppo_warmup_run{args.run_id}")
+    official_prefix = os.path.join(OUTPUT_4X4GRID_DIR, f"ppo_test_final_run{args.run_id}")
 
     if not os.path.exists(NET_FILE):
         raise FileNotFoundError(f"NET not found: {NET_FILE}")
@@ -79,7 +80,7 @@ def main():
     elif args.ray_results:
         ckpt_path = find_latest_checkpoint(args.ray_results)
     else:
-        default_ray = os.path.join(os.path.expanduser("~"), "ray_results", "PPO")
+        default_ray = os.path.abspath(os.path.join("ray_results", f"4x4grid_run{args.run_id}"))
         ckpt_path = find_latest_checkpoint(default_ray)
 
     if not os.path.isdir(ckpt_path):
@@ -101,7 +102,10 @@ def main():
 
     ray.init(ignore_reinit_error=True, include_dashboard=False)
 
-    env_name = "4x4grid"
+    # The restored checkpoint keeps the training env id in its saved RLlib config.
+    # Re-register that exact name here so Algorithm.from_checkpoint can rebuild
+    # the worker set before we create our dedicated evaluation env below.
+    env_name = f"4x4grid_run{args.run_id}"
 
     def create_parallel_env(out_csv_name):
         return ParallelPettingZooEnv(

@@ -1,4 +1,5 @@
 # Generate thesis-ready comparison plots and summary statistics.
+import argparse
 import os
 from itertools import combinations
 
@@ -16,7 +17,6 @@ except Exception:
     HAS_SCIPY = False
 
 
-IN_PATH = os.path.join("outputs", "compare_eval_summary.csv")
 OUT_DIR = "outputs"
 os.makedirs(OUT_DIR, exist_ok=True)
 
@@ -120,35 +120,49 @@ def plot_metric_vs_episode(df, metric, out_path):
         )
 
     ylabel = METRIC_LABELS.get(metric, metric)
-    style_axis(ax, title=f"{ylabel}: Algorithm Comparison", ylabel=ylabel)
+    style_axis(ax, title=f"{ylabel}: Method Comparison", ylabel=ylabel)
     ax.legend(title="Method")
     finish_and_save(fig, out_path)
 
 
 def main():
-    if not os.path.exists(IN_PATH):
-        raise FileNotFoundError(f"Cannot find {IN_PATH}. Run your comparison script first.")
+    parser = argparse.ArgumentParser(description="Generate plots and statistics from comparison summaries.")
+    parser.add_argument(
+        "--run-id",
+        type=int,
+        default=None,
+        help="If set, read/write run-specific comparison outputs such as compare_eval_summary_run2.csv.",
+    )
+    args = parser.parse_args()
 
-    df = load_data(IN_PATH)
+    suffix = f"_run{args.run_id}" if args.run_id is not None else ""
+    in_path = os.path.join("outputs", f"compare_eval_summary{suffix}.csv")
+
+    if not os.path.exists(in_path):
+        raise FileNotFoundError(f"Cannot find {in_path}. Run your comparison script first.")
+
+    df = load_data(in_path)
 
     # Save stats
     stats = summarize(df)
-    stats_path = os.path.join(OUT_DIR, "eval_stats_summary.csv")
+    stats_path = os.path.join(OUT_DIR, f"eval_stats_summary{suffix}.csv")
     stats.to_csv(stats_path, index=False)
 
     tests = welch_tests(df)
-    tests_path = os.path.join(OUT_DIR, "eval_welch_tests.csv")
+    tests_path = os.path.join(OUT_DIR, f"eval_welch_tests{suffix}.csv")
     tests.to_csv(tests_path, index=False)
 
     # Plots
-    plot_metric_vs_episode(df, "mean_wait", os.path.join(OUT_DIR, "fig_mean_wait_vs_ep.png"))
-    plot_metric_vs_episode(df, "stopped_ratio", os.path.join(OUT_DIR, "fig_stopped_ratio_vs_ep.png"))
+    mean_wait_path = os.path.join(OUT_DIR, f"fig_mean_wait_vs_ep{suffix}.png")
+    stopped_ratio_path = os.path.join(OUT_DIR, f"fig_stopped_ratio_vs_ep{suffix}.png")
+    plot_metric_vs_episode(df, "mean_wait", mean_wait_path)
+    plot_metric_vs_episode(df, "stopped_ratio", stopped_ratio_path)
 
     print("Saved:")
     print(" -", stats_path)
     print(" -", tests_path)
-    print(" -", os.path.join(OUT_DIR, "fig_mean_wait_vs_ep.png"))
-    print(" -", os.path.join(OUT_DIR, "fig_stopped_ratio_vs_ep.png"))
+    print(" -", mean_wait_path)
+    print(" -", stopped_ratio_path)
     if not HAS_SCIPY:
         print("Note: scipy not installed, so p-values were skipped.")
 

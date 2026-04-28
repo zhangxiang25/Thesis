@@ -1,5 +1,6 @@
 import os
 import sys
+import argparse
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(SCRIPT_DIR)
@@ -22,6 +23,11 @@ from ray.tune.registry import register_env
 import sumo_rl
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Train PPO on the shared 4x4 SUMO setup.")
+    parser.add_argument("--run-id", type=int, default=1, help="Logical run id used in output paths.")
+    parser.add_argument("--episodes", type=int, default=20, help="Total PPO training episodes.")
+    args = parser.parse_args()
+
     # Use:
     # ray[rllib]==2.7.0
     # numpy == 1.23.4
@@ -32,11 +38,13 @@ if __name__ == "__main__":
     # tensorflow-probability>=0.19.0
     ray.init()
 
-    env_name = "4x4grid"
+    env_name = f"4x4grid_run{args.run_id}"
     results_dir = os.path.abspath(os.path.join("ray_results", env_name))
     os.makedirs(results_dir, exist_ok=True)
 
-    def make_env(out_csv_name="outputs/4x4grid/ppo"):
+    default_csv_prefix = os.path.join("outputs", "4x4grid", f"ppo_run{args.run_id}")
+
+    def make_env(out_csv_name=default_csv_prefix):
         return ParallelPettingZooEnv(
             sumo_rl.parallel_env(
                 net_file=NET_FILE,
@@ -91,8 +99,8 @@ if __name__ == "__main__":
 
     tune.run(
         "PPO",
-        name="PPO",
-        stop={"episodes_total": 20},
+        name=f"PPO_run{args.run_id}",
+        stop={"episodes_total": args.episodes},
         checkpoint_freq=5,
         storage_path=results_dir,
         config=config.to_dict(),
